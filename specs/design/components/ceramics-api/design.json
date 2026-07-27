@@ -36,12 +36,13 @@
     {
       "kind": "external",
       "name": "email-provider",
-      "candidates": [
-        { "name": "sendgrid", "style": "sdk", "package": "npm:@sendgrid/mail@^8" },
-        { "name": "resend", "style": "sdk", "package": "npm:resend@^3" },
-        { "name": "postmark", "style": "sdk", "package": "npm:postmark@^4" }
-      ],
-      "description": "Sends order confirmation emails to customers after successful checkout."
+      "style": "sdk",
+      "package": "npm:@sendgrid/mail@^8",
+      "description": "Sends order confirmation emails to customers after successful checkout via SendGrid.",
+      "config": [
+        { "key": "SENDGRID_API_KEY", "secret": true, "description": "SendGrid API key used to send transactional emails." },
+        { "key": "SENDGRID_FROM_EMAIL", "description": "Verified sender address order confirmations are sent from." }
+      ]
     }
   ],
   "description": "Go service owning the ceramics store's catalog, cart, checkout, order, and admin management APIs, plus all persistence in ceramics-db. Listens on :9090, exposes GET /health. Authenticates end users via the shared user-auth Thunder dependency; resolves Customer vs Store Admin/Staff role from the caller's group claim. Delegates payment processing to payment-provider and order-confirmation email to email-provider. Does not issue its own tokens and does not validate JWTs itself (the gateway does).",
