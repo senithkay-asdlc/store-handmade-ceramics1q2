@@ -172,6 +172,10 @@ both desktop and mobile browsers.
 - NFR-7 (Auditability): Order status changes and inventory adjustments
 made by Admin/Staff shall be recorded with a timestamp and actor for
 traceability.
+- NFR-8 (Persistence): All application data — product catalog, inventory
+levels, customer accounts, carts, orders, and order/inventory audit
+records — shall be persisted in a database so that it survives
+application restarts and is not lost between sessions.
 
 ## 6. Assumptions
 
