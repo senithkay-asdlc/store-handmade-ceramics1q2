@@ -1,0 +1,26 @@
+{
+  "name": "admin-webapp",
+  "type": "web-application",
+  "version": "0.1.0",
+  "language": "TypeScript",
+  "buildpack": "docker",
+  "appPath": "admin-webapp",
+  "entrypoint": "deployment/web-application",
+  "exposure": "intranet",
+  "dependencies": [
+    {
+      "kind": "component",
+      "name": "ceramics-api",
+      "description": "Product/inventory CRUD, image management, order list/detail, and order-status update calls (admin endpoints)."
+    },
+    {
+      "kind": "platform-resource",
+      "name": "user-auth",
+      "resourceType": "thunder-app",
+      "parameters": { "scopes": "openid profile email" },
+      "description": "Staff sign-in; only callers in the Store Admin/Staff group are authorized by ceramics-api's admin endpoints."
+    }
+  ],
+  "description": "Staff-only React SPA admin console: product & inventory management (including stocked-vs-unique flag, variants, images) and order management (list, detail, status updates with restocking on cancellation). Exposed only to the org intranet. Calls ceramics-api for all data and signs staff in via the shared user-auth Thunder dependency.",
+  "skillsApplied": ["react-webapp", "thunder-authentication", "excalidraw-wireframes"]
+}

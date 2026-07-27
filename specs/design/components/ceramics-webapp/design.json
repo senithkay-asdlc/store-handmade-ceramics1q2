@@ -1,0 +1,26 @@
+{
+  "name": "ceramics-webapp",
+  "type": "web-application",
+  "version": "0.1.0",
+  "language": "TypeScript",
+  "buildpack": "docker",
+  "appPath": "ceramics-webapp",
+  "entrypoint": "deployment/web-application",
+  "exposure": "internet",
+  "dependencies": [
+    {
+      "kind": "component",
+      "name": "ceramics-api",
+      "description": "Catalog browsing/search, cart, checkout, profile/address, and order-history calls."
+    },
+    {
+      "kind": "platform-resource",
+      "name": "user-auth",
+      "resourceType": "thunder-app",
+      "parameters": { "scopes": "openid profile email" },
+      "description": "Customer sign-in/sign-up (account required before checkout)."
+    }
+  ],
+  "description": "Public React SPA storefront: catalog browsing/search, product detail, cart, account registration/profile/addresses, checkout, and order history. Calls ceramics-api for all data and signs customers in via the shared user-auth Thunder dependency. Does not process payment directly; checkout redirects/tokenizes through the payment gateway via ceramics-api.",
+  "skillsApplied": ["react-webapp", "thunder-authentication", "excalidraw-wireframes"]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "ceramics-api",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Go",
+  "buildpack": "docker",
+  "appPath": "ceramics-api",
+  "entrypoint": "deployment/service",
+  "exposure": "internet",
+  "dependencies": [
+    {
+      "kind": "platform-resource",
+      "name": "ceramics-db",
+      "resourceType": "postgres",
+      "parameters": { "size": "small" },
+      "description": "Relational store for products, variants, accounts, addresses, carts, orders, order items, and audit log entries."
+    },
+    {
+      "kind": "platform-resource",
+      "name": "user-auth",
+      "resourceType": "thunder-app",
+      "parameters": { "scopes": "openid profile email" },
+      "description": "Shared sign-in for customers and staff; roles are resolved from the caller's group claim (Customer vs Store Admin)."
+    },
+    {
+      "kind": "external",
+      "name": "payment-provider",
+      "style": "sdk",
+      "package": "npm:stripe@^14",
+      "description": "Creates/confirms payment intents during checkout; never stores raw card data.",
+      "config": [
+        { "key": "STRIPE_API_KEY", "secret": true, "description": "Stripe secret API key used to create/confirm payment intents." },
+        { "key": "STRIPE_WEBHOOK_SECRET", "secret": true, "description": "Signing secret to verify Stripe webhook callbacks." }
+      ]
+    },
+    {
+      "kind": "external",
+      "name": "email-provider",
+      "candidates": [
+        { "name": "sendgrid", "style": "sdk", "package": "npm:@sendgrid/mail@^8" },
+        { "name": "resend", "style": "sdk", "package": "npm:resend@^3" },
+        { "name": "postmark", "style": "sdk", "package": "npm:postmark@^4" }
+      ],
+      "description": "Sends order confirmation emails to customers after successful checkout."
+    }
+  ],
+  "description": "Go service owning the ceramics store's catalog, cart, checkout, order, and admin management APIs, plus all persistence in ceramics-db. Listens on :9090, exposes GET /health. Authenticates end users via the shared user-auth Thunder dependency; resolves Customer vs Store Admin/Staff role from the caller's group claim. Delegates payment processing to payment-provider and order-confirmation email to email-provider. Does not issue its own tokens and does not validate JWTs itself (the gateway does).",
+  "skillsApplied": ["openapi-conventions", "go", "api-management", "thunder-authentication"]
+}

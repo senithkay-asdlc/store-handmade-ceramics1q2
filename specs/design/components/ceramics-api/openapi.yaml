@@ -1,0 +1,848 @@
+openapi: 3.0.3
+info:
+  title: Ceramics API
+  version: 0.1.0
+  description: >
+    Catalog, cart, checkout, order, account, and admin management API for the
+    handmade ceramics store.
+servers:
+  - url: /
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: catalog
+  - name: cart
+  - name: checkout
+  - name: orders
+  - name: account
+  - name: admin-products
+  - name: admin-orders
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+
+  /products:
+    get:
+      operationId: listProducts
+      summary: List/search/filter/sort the catalog
+      tags: [catalog]
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Keyword search across name/description
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [price_asc, price_desc, newest] }
+      responses:
+        '200':
+          description: Paginated product list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Product' }
+
+  /products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Get product detail
+      tags: [catalog]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart:
+    get:
+      operationId: getCart
+      summary: Get the signed-in customer's cart
+      tags: [cart]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      responses:
+        '200':
+          description: Current cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart/items:
+    post:
+      operationId: addCartItem
+      summary: Add a product (variant) to the cart
+      tags: [cart]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCartItemRequest' }
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400':
+          description: Requested quantity exceeds availability, or item unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart/items/{cartItemId}:
+    patch:
+      operationId: updateCartItem
+      summary: Update a cart item's quantity
+      tags: [cart]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/CartItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400':
+          description: Requested quantity exceeds availability
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Cart item not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      operationId: removeCartItem
+      summary: Remove an item from the cart
+      tags: [cart]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/CartItemId'
+      responses:
+        '204':
+          description: Item removed
+        '404':
+          description: Cart item not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /checkout:
+    post:
+      operationId: createCheckout
+      summary: Re-validate cart, compute totals, and create a payment intent
+      tags: [checkout]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutRequest' }
+      responses:
+        '200':
+          description: Order summary and payment client reference
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutResult' }
+        '400':
+          description: Cart is empty, or an item is no longer available at its cart price
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /checkout/confirm:
+    post:
+      operationId: confirmCheckout
+      summary: Confirm payment result and create the order
+      tags: [checkout]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentReference]
+              properties:
+                paymentReference: { type: string }
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '402':
+          description: Payment failed or declined; cart left intact, no order created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders:
+    get:
+      operationId: listMyOrders
+      summary: List the signed-in customer's past orders
+      tags: [orders]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Paginated order list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders/{orderId}:
+    get:
+      operationId: getMyOrder
+      summary: Get one of the signed-in customer's orders
+      tags: [orders]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /account:
+    get:
+      operationId: getAccount
+      summary: Get the signed-in customer's profile
+      tags: [account]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      responses:
+        '200':
+          description: Account profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      operationId: updateAccount
+      summary: Update the signed-in customer's profile
+      tags: [account]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountUpdateRequest' }
+      responses:
+        '200':
+          description: Updated account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /account/addresses:
+    get:
+      operationId: listAddresses
+      summary: List the signed-in customer's shipping addresses
+      tags: [account]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      responses:
+        '200':
+          description: Address list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Address' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      operationId: addAddress
+      summary: Add a shipping address
+      tags: [account]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: Address created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '401':
+          description: Missing/invalid identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/products:
+    get:
+      operationId: adminListProducts
+      summary: List all products for management (admin)
+      tags: [admin-products]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Paginated product list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Product' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      operationId: adminCreateProduct
+      summary: Create a product
+      tags: [admin-products]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '201':
+          description: Product created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/products/{productId}:
+    patch:
+      operationId: adminUpdateProduct
+      summary: Update a product, including kind, variants, stock, or images
+      tags: [admin-products]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductInput' }
+      responses:
+        '200':
+          description: Product updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      operationId: adminDeleteProduct
+      summary: Remove a product
+      tags: [admin-products]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: Product removed
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/products/{productId}/mark-sold:
+    post:
+      operationId: adminMarkProductSold
+      summary: Manually mark a unique product sold/unavailable
+      tags: [admin-products]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Product marked sold
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '400':
+          description: Product is not a unique-kind product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders:
+    get:
+      operationId: adminListOrders
+      summary: List all orders, filterable by status
+      tags: [admin-orders]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Paginated order list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders/{orderId}:
+    get:
+      operationId: adminGetOrder
+      summary: Get full order detail
+      tags: [admin-orders]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders/{orderId}/status:
+    patch:
+      operationId: adminUpdateOrderStatus
+      summary: Update an order's fulfillment status
+      tags: [admin-orders]
+      parameters:
+        - $ref: '#/components/parameters/XUserId'
+        - $ref: '#/components/parameters/XUserGroups'
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/OrderStatus' }
+      responses:
+        '200':
+          description: Order updated; cancelling restores stocked inventory / relists unique items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Caller has no Store Admin/Staff role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    XUserId:
+      name: X-User-Id
+      in: header
+      required: true
+      description: Caller's identity, injected by the gateway from the validated JWT
+      schema: { type: string }
+    XUserGroups:
+      name: X-User-Groups
+      in: header
+      required: true
+      description: Caller's role groups, injected by the gateway; used to authorize admin endpoints
+      schema: { type: string }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string }
+    CartItemId:
+      name: cartItemId
+      in: path
+      required: true
+      schema: { type: string }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer, description: HTTP or application error code }
+        message: { type: string, description: short human-readable label }
+        description: { type: string, description: detailed explanation }
+        moreInfo: { type: string, description: URI to documentation }
+
+    ProductKind:
+      type: string
+      enum: [stocked, unique]
+
+    ProductStatus:
+      type: string
+      enum: [active, sold, archived]
+
+    OrderStatus:
+      type: string
+      enum: [pending, paid, shipped, delivered, cancelled]
+
+    ProductVariant:
+      type: object
+      required: [id, name, quantityOnHand]
+      properties:
+        id: { type: string }
+        name: { type: string, description: e.g. glaze color or size }
+        sku: { type: string }
+        quantityOnHand: { type: integer }
+
+    Product:
+      type: object
+      required: [id, name, price, kind, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        price: { type: number, format: float }
+        images:
+          type: array
+          items: { type: string }
+        dimensions: { type: string }
+        materials: { type: string }
+        kind: { $ref: '#/components/schemas/ProductKind' }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariant' }
+
+    ProductInput:
+      type: object
+      required: [name, price, kind]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        price: { type: number, format: float }
+        images:
+          type: array
+          items: { type: string }
+        dimensions: { type: string }
+        materials: { type: string }
+        kind: { $ref: '#/components/schemas/ProductKind' }
+        variants:
+          type: array
+          items: { $ref: '#/components/schemas/ProductVariant' }
+
+    CartItem:
+      type: object
+      required: [id, productId, quantity, unitPrice]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        variantId: { type: string, nullable: true }
+        productName: { type: string }
+        quantity: { type: integer }
+        unitPrice: { type: number, format: float }
+
+    Cart:
+      type: object
+      required: [id, items, subtotal]
+      properties:
+        id: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        subtotal: { type: number, format: float }
+
+    AddCartItemRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string }
+        variantId: { type: string, nullable: true }
+        quantity: { type: integer, minimum: 1 }
+
+    Address:
+      type: object
+      required: [id, line1, city, region, postalCode, country]
+      properties:
+        id: { type: string }
+        line1: { type: string }
+        line2: { type: string }
+        city: { type: string }
+        region: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        isDefault: { type: boolean }
+
+    AddressInput:
+      type: object
+      required: [line1, city, region, postalCode, country]
+      properties:
+        line1: { type: string }
+        line2: { type: string }
+        city: { type: string }
+        region: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+        isDefault: { type: boolean }
+
+    Account:
+      type: object
+      required: [id, name, email]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+
+    AccountUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+
+    CheckoutRequest:
+      type: object
+      required: [addressId]
+      properties:
+        addressId: { type: string }
+
+    CheckoutResult:
+      type: object
+      required: [subtotal, shippingFee, tax, total, paymentClientSecret]
+      properties:
+        subtotal: { type: number, format: float }
+        shippingFee: { type: number, format: float }
+        tax: { type: number, format: float }
+        total: { type: number, format: float }
+        paymentClientSecret:
+          type: string
+          description: Opaque client reference for the payment gateway's hosted payment step
+
+    OrderItem:
+      type: object
+      required: [id, productId, productName, quantity, unitPrice]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        variantId: { type: string, nullable: true }
+        productName: { type: string }
+        quantity: { type: integer }
+        unitPrice: { type: number, format: float }
+
+    Order:
+      type: object
+      required: [id, status, subtotal, shippingFee, tax, total, items, createdAt]
+      properties:
+        id: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        subtotal: { type: number, format: float }
+        shippingFee: { type: number, format: float }
+        tax: { type: number, format: float }
+        total: { type: number, format: float }
+        shippingAddress: { $ref: '#/components/schemas/Address' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
